@@ -304,7 +304,6 @@ with col_input:
         ),
     )
     analyze_clicked = st.button("분석하기", type="primary", use_container_width=True)
-    st.caption("※ 분석은 공개된 INCI 기능 분류체계만 사용하며, 자사 원료 정보와는 매칭하지 않습니다.")
 
 with col_result:
     st.subheader("📊 분석 결과")
