@@ -222,28 +222,38 @@ INGREDIENT_DB = {
 
 
 def split_ingredient_text(text: str) -> list[str]:
-    """쉼표로 성분을 분리 — 괄호 안과 "1,2-헥산다이올"처럼 숫자 사이에 낀
-    쉼표는 성분 구분자가 아니므로 분리 기준에서 제외."""
-    placeholder = " "
-    protected = re.sub(r"(\d),(\d)", r"\1" + placeholder + r"\2", text)
-
+    """쉼표로 성분을 분리한다. 단, 아래는 성분 구분자로 보지 않는다.
+    - 괄호 안의 쉼표 (예: "레티놀(1,000IU/g)")
+    - 숫자 사이에 낀 쉼표 (예: "1,2-헥산다이올")
+    """
     items = []
     depth = 0
     current = ""
-    for ch in protected:
+    length = len(text)
+    for idx, ch in enumerate(text):
         if ch == "(":
             depth += 1
         if ch == ")":
             depth = max(0, depth - 1)
-        if ch == "," and depth == 0:
+
+        between_digits = (
+            ch == ","
+            and idx > 0
+            and idx + 1 < length
+            and text[idx - 1].isdigit()
+            and text[idx + 1].isdigit()
+        )
+
+        if ch == "," and depth == 0 and not between_digits:
             items.append(current.strip())
             current = ""
         else:
             current += ch
+
     if current.strip():
         items.append(current.strip())
 
-    return [item.replace(placeholder, ",") for item in items if item]
+    return [item for item in items if item]
 
 
 def parse_ingredient_item(raw: str) -> tuple[str, str | None]:
