@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import html
 import re
 from urllib.parse import quote
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -27,6 +29,27 @@ st.markdown(
             font-size: 13px;
             font-weight: 600;
             margin: 2px 4px 2px 0;
+        }
+        .ingredient-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .ingredient-table th, .ingredient-table td {
+            text-align: left;
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+        }
+        .ingredient-table th {
+            font-weight: 600;
+        }
+        .func-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12.5px;
+            font-weight: 600;
+            white-space: nowrap;
         }
     </style>
     """,
@@ -165,6 +188,7 @@ INGREDIENT_DB = {
     "다이메티코놀": ("컨디셔닝제", False),
     "하이드롤라이즈드케라틴": ("활성성분", False),
     "아르기닌": ("pH조절/가용화", False),
+    "알지닌": ("pH조절/가용화", False),
     "멘톨": ("기타(베이스)", False),
     "폴리쿼터늄-10": ("컨디셔닝제", False),
     "폴리쿼터늄-7": ("컨디셔닝제", False),
@@ -218,7 +242,93 @@ INGREDIENT_DB = {
     # 보습/텍스처 추가
     "솔비톨": ("보습제", False),
     "말토덱스트린": ("점증/유화", False),
+    # 지방알코올/에스터 계열 점증·유화 보조제
+    "폴리글리세릴-2스테아레이트": ("점증/유화", False),
+    "아라키딜알코올": ("점증/유화", False),
+    "스테아릴알코올": ("점증/유화", False),
+    "베헤닐알코올": ("점증/유화", False),
+    "C12-16알코올": ("점증/유화", False),
+    "아라키딜글루코사이드": ("점증/유화", False),
+    "팔미틱애씨드": ("점증/유화", False),
+    "다이메티콘/비닐다이메티콘크로스폴리머": ("필름형성제", False),
+    # 보습제 추가 (하이알루로닉애씨드 유도체 등)
+    "글리세릴글루코사이드": ("보습제", False),
+    "글루코오스": ("보습제", False),
+    "다이메틸실란올하이알루로네이트": ("보습제", True),
+    "포타슘하이알루로네이트": ("보습제", True),
+    "소듐하이알루로네이트크로스폴리머": ("보습제", True),
+    "하이드록시프로필트라이모늄하이알루로네이트": ("보습제", True),
+    "소듐하이알루로네이트다이메틸실란올": ("보습제", True),
+    "소듐아세틸레이티드하이알루로네이트": ("보습제", True),
+    # 오일/에몰리언트 추가
+    "C13-15알케인": ("오일/에몰리언트", False),
+    # 방부/킬레이트 추가
+    "에티드론산": ("방부", False),
+    # 활성성분 — 산화방지/추출물/발효/펩타이드 추가
+    "펜타에리스리틸테트라-다이-t-부틸하이드록시하이드로신나메이트": ("활성성분", False),
+    "로즈마리추출물": ("활성성분", False),
+    "락토바실러스발효용해물": ("활성성분", True),
+    "마트리카리아꽃오일": ("활성성분", False),
+    "소양삼추출물": ("활성성분", True),
+    "소듐디엔에이": ("활성성분", True),
+    "트라이펩타이드-1": ("활성성분", True),
+    "아세틸테트라펩타이드-5": ("활성성분", True),
+    "팔미토일트라이펩타이드-1": ("활성성분", True),
+    "헥사펩타이드-11": ("활성성분", True),
+    "헥사펩타이드-9": ("활성성분", True),
+    "팔미토일트라이펩타이드-5": ("활성성분", True),
 }
+
+# 기능 분류 색상 — palette.md의 검증된 8개 카테고리 색상(파랑/아쿠아/노랑/초록/
+# 보라/빨강/마젠타/오렌지)에 유사 기능군을 매핑하고, '기타(베이스)'는 중성색,
+# '미분류'는 상태색(경고, 항상 아이콘+라벨 동반)을 사용한다.
+# 값 형식: (라이트 배경, 라이트 글자색, 다크 배경, 다크 글자색)
+FUNC_STYLE: dict[str, tuple[str, str, str, str]] = {
+    "보습제": ("#2a78d6", "#ffffff", "#3987e5", "#ffffff"),
+    "계면활성제": ("#1baf7a", "#ffffff", "#199e70", "#ffffff"),
+    "컨디셔닝제": ("#1baf7a", "#ffffff", "#199e70", "#ffffff"),
+    "방부": ("#eda100", "#1a1a19", "#c98500", "#1a1a19"),
+    "pH조절/가용화": ("#eda100", "#1a1a19", "#c98500", "#1a1a19"),
+    "점증/유화": ("#008300", "#ffffff", "#008300", "#ffffff"),
+    "필름형성제": ("#008300", "#ffffff", "#008300", "#ffffff"),
+    "활성성분": ("#4a3aa7", "#ffffff", "#9085e9", "#1a1a19"),
+    "자외선차단": ("#e34948", "#ffffff", "#e66767", "#ffffff"),
+    "안료/컬러런트": ("#e87ba4", "#1a1a19", "#d55181", "#ffffff"),
+    "펄/광택제": ("#e87ba4", "#1a1a19", "#d55181", "#ffffff"),
+    "파우더/분체": ("#e87ba4", "#1a1a19", "#d55181", "#ffffff"),
+    "오일/에몰리언트": ("#eb6834", "#ffffff", "#d95926", "#ffffff"),
+    "오일/왁스(베이스)": ("#eb6834", "#ffffff", "#d95926", "#ffffff"),
+    "오일/휘발성베이스": ("#eb6834", "#ffffff", "#d95926", "#ffffff"),
+    "기타(베이스)": ("#e1e0d9", "#52514e", "#2c2c2a", "#c3c2b7"),
+    "미분류": ("#fab219", "#1a1a19", "#fab219", "#1a1a19"),
+}
+FUNC_SLUGS: dict[str, str] = {func: f"func-{idx}" for idx, func in enumerate(FUNC_STYLE)}
+
+
+def func_badge_css() -> str:
+    light_rules = [
+        f".func-badge.{FUNC_SLUGS[func]}{{background:{bg_l};color:{fg_l};}}"
+        for func, (bg_l, fg_l, _bg_d, _fg_d) in FUNC_STYLE.items()
+    ]
+    dark_rules = [
+        f".func-badge.{FUNC_SLUGS[func]}{{background:{bg_d};color:{fg_d};}}"
+        for func, (_bg_l, _fg_l, bg_d, fg_d) in FUNC_STYLE.items()
+    ]
+    return (
+        "\n".join(light_rules)
+        + "\n@media (prefers-color-scheme: dark) {\n"
+        + "\n".join(dark_rules)
+        + "\n}"
+    )
+
+
+def func_badge_html(func: str) -> str:
+    slug = FUNC_SLUGS.get(func, FUNC_SLUGS["미분류"])
+    icon = "⚠️ " if func == "미분류" else ""
+    return f'<span class="func-badge {slug}">{icon}{html.escape(func)}</span>'
+
+
+st.markdown(f"<style>{func_badge_css()}</style>", unsafe_allow_html=True)
 
 
 def split_ingredient_text(text: str) -> list[str]:
@@ -323,35 +433,61 @@ with col_result:
         st.markdown(f"**총 {total}개 성분**")
 
         counts_series = pd.Series(counts).sort_values(ascending=False)
-        st.bar_chart(counts_series)
+        chart_df = counts_series.rename_axis("기능 분류").reset_index(name="개수")
+        func_chart = (
+            alt.Chart(chart_df)
+            .mark_bar()
+            .encode(
+                x=alt.X("개수:Q", title="개수"),
+                y=alt.Y("기능 분류:N", title=None, sort="-x"),
+                color=alt.Color(
+                    "기능 분류:N",
+                    scale=alt.Scale(
+                        domain=list(FUNC_STYLE.keys()),
+                        range=[style[0] for style in FUNC_STYLE.values()],
+                    ),
+                    legend=None,
+                ),
+                tooltip=[
+                    alt.Tooltip("기능 분류:N", title="기능 분류"),
+                    alt.Tooltip("개수:Q", title="개수"),
+                ],
+            )
+        )
+        st.altair_chart(func_chart, use_container_width=True)
 
         trend_items = [i for i in ingredients if i["trend"]]
         st.markdown("**트렌드 활성성분**")
         if trend_items:
             st.markdown(
-                "".join(f'<span class="trend-badge">✨ {i["name"]}</span>' for i in trend_items),
+                "".join(
+                    f'<span class="trend-badge">✨ {html.escape(i["name"])}</span>'
+                    for i in trend_items
+                ),
                 unsafe_allow_html=True,
             )
         else:
             st.caption("트렌드 성분 없음")
 
-        df = pd.DataFrame(
-            [
-                {
-                    "성분": i["name"] + (f" ({i['note']})" if i["note"] else ""),
-                    "기능 분류": i["func"],
-                    "공식 DB": kcia_search_url(i["name"]),
-                }
-                for i in ingredients
-            ]
-        )
-        st.dataframe(
-            df,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "공식 DB": st.column_config.LinkColumn("공식 DB", display_text="확인 ↗"),
-            },
+        rows_html = []
+        for i in ingredients:
+            display_name = html.escape(
+                i["name"] + (f" ({i['note']})" if i["note"] else "")
+            )
+            db_url = html.escape(kcia_search_url(i["name"]), quote=True)
+            rows_html.append(
+                "<tr>"
+                f"<td>{display_name}</td>"
+                f"<td>{func_badge_html(i['func'])}</td>"
+                f'<td><a href="{db_url}" target="_blank" rel="noopener">확인 ↗</a></td>'
+                "</tr>"
+            )
+        st.markdown(
+            '<table class="ingredient-table">'
+            "<thead><tr><th>성분</th><th>기능 분류</th><th>공식 DB</th></tr></thead>"
+            f"<tbody>{''.join(rows_html)}</tbody>"
+            "</table>",
+            unsafe_allow_html=True,
         )
         st.caption(
             "※ '확인' 링크는 대한화장품협회 성분사전(kcia.or.kr) 검색 결과를 새 탭에서 엽니다. "
